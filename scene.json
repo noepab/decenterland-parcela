@@ -1,0 +1,38 @@
+{
+  "display": {
+    "title": "AutoGestionPro HQ",
+    "description": "Edificio futurista de 5 pisos con IA, drone y experiencias interactivas",
+    "navmapThumbnail": "images/scene-thumbnail.png",
+    "favicon": "favicon_asset"
+  },
+  "contact": {
+    "name": "AutoGestionPro",
+    "email": "info@autogestionpro.com"
+  },
+  "owner": "",
+  "scene": {
+    "parcels": [
+      "-51,144"
+    ],
+    "base": "-51,144"
+  },
+  "communications": {
+    "type": "webrtc",
+    "signalling": "https://signalling-01.decentraland.org"
+  },
+  "policy": {
+    "contentRating": "E",
+    "fly": true,
+    "voiceEnabled": true,
+    "blacklist": [],
+    "teleportPosition": "0,0,0"
+  },
+  "main": "bin/game.js",
+  "tags": [
+    "business",
+    "office",
+    "ai",
+    "futuristic",
+    "interactive"
+  ]
+}

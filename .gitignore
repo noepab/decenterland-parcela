@@ -1,0 +1,18 @@
+# Decentraland
+.dcl
+
+# Node modules
+node_modules
+
+# Binaries
+bin
+dist
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Build info
+*.tsbuildinfo

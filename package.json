@@ -1,0 +1,22 @@
+{
+  "name": "agp-building",
+  "version": "1.0.0",
+  "description": "AutoGestionPro HQ - Decentraland Scene",
+  "main": "bin/game.js",
+  "scripts": {
+    "start": "dcl start",
+    "build": "build-ecs",
+    "watch": "chokidar \"src/**/*.ts\" -c \"npm run build\"",
+    "deploy": "dcl deploy",
+    "ecs-install": "npm install --save-dev @dcl/inspector"
+  },
+  "devDependencies": {
+    "@dcl/inspector": "^2.0.0",
+    "@dcl/js-runtime": "^7.4.4",
+    "@dcl/sdk": "^7.4.4",
+    "chokidar-cli": "^3.0.0"
+  },
+  "bundleDependencies": [],
+  "author": "AutoGestionPro",
+  "license": "MIT"
+}
