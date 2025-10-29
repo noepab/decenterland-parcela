@@ -1,7 +1,9 @@
 // ============================================
-// Decenterland Parcela - Enhanced Scene Setup
+// Decenterland Parcela - Advanced Scene Setup
 // ============================================
-// Imports - Organized by source
+// Enhanced animation system with circular motion,
+// sine-wave height variation, and interactive controls
+
 import {
   engine,
   Transform,
@@ -10,316 +12,264 @@ import {
   Color4,
   PointerEvents,
   PointerEventType,
-  Quaternion
+  Quaternion,
 } from '@dcl/sdk/ecs'
-import {
-  Vector3
-} from '@dcl/sdk/math'
+
+import { Vector3 } from '@dcl/sdk/math'
+
+// ============================================
+// Animation Configuration Constants
+// ============================================
+/**
+ * Configuration object for blue sphere animation
+ * - radius: Distance from center (XZ plane)
+ * - height: Base height in Y axis
+ * - heightAmplitude: Maximum deviation in Y using sine wave
+ * - baseSpeed: Base rotation speed (radians per frame)
+ * - speedMultiplier: Applied when accelerated by red box click
+ */
+const ANIMATION_CONFIG = {
+  sphereRadius: 4,
+  sphereBaseHeight: 2,
+  heightAmplitude: 1.5,
+  baseSpeed: 0.02,
+  speedMultiplier: 2.5,
+  speedDecayFrames: 120, // Frames until speed returns to normal
+}
 
 // ============================================
 // Global State for Animations & Interactions
 // ============================================
-// Track animation time for floating effect
+/** Track animation time for floating effect */
 let animationTime: number = 0
-// Store references to interactive entities
-let boxEntity: any = null
+
+/** Speed multiplier state for blue sphere acceleration */
+let speedMultiplierActive: number = 1.0
+let speedDecayCounter: number = 0
+
+/** Store references to interactive entities */
+let blueSphereEntity: any = null
+let redBoxEntity: any = null
 let wallEntity: any = null
 let welcomeTextEntity: any = null
+
 let isCyanColor: boolean = true
 const originalBoxScale = Vector3.create(2, 2, 2)
 
 // ============================================
-// Scene Configuration
+// Animation Functions (Modular)
 // ============================================
-/**
- * setupScene: Creates and configures all scene entities
- * This function orchestrates entity creation in a modular way
- * Includes: floor, walls, box, spheres, welcome text, and new entities
- */
-function setupScene(): void {
-  // Create floor base
-  createFloor()
-  
-  // Create main decorative box
-  boxEntity = createStyledBox()
-  
-  // Create warm-colored decorative sphere (light source) with animation
-  createDecorativeSphere()
-  
-  // Create wall behind the box (with rotation effect)
-  wallEntity = createWall()
-  
-  // Create welcome text message (with pulse effect)
-  welcomeTextEntity = createWelcomeText()
-  
-  // Create additional entities: floating blue sphere
-  createFloatingBlueSphere()
-  
-  // Create small red box at other end of floor
-  createRedBox()
-  
-  // Setup animation system
-  setupAnimationSystem()
-}
 
 /**
- * createFloor: Creates a large base plane (floor) with neutral grey color
- * Provides a solid foundation for the scene
+ * calculateCircularMotion: Computes position on circular path in XZ plane
+ * Uses parametric equations for smooth circular motion
+ * @param time - Current animation time
+ * @param radius - Radius of circular path
+ * @returns Vector3 with x, z on circle, y unchanged
  */
-function createFloor(): void {
-  const floor = engine.addEntity()
-  Transform.create(floor, {
-    position: Vector3.create(8, 0, 8),
-    scale: Vector3.create(16, 0.5, 16)
-  })
-  MeshRenderer.setBox(floor)
-  const floorMaterial = Material.getPbrMaterial(floor)
-  floorMaterial.albedoColor = Color4.create(0.6, 0.6, 0.6, 1) // Grey
-  floorMaterial.metallic = 0.1
-  floorMaterial.roughness = 0.8
-}
-
-/**
- * createStyledBox: Creates a cyan/magenta toggle-able decorative box
- * Responds to pointer down events to toggle color
- */
-function createStyledBox(): any {
-  const box = engine.addEntity()
-  Transform.create(box, {
-    position: Vector3.create(8, 1, 8),
-    scale: originalBoxScale
-  })
-  MeshRenderer.setBox(box)
-  const boxMaterial = Material.getPbrMaterial(box)
-  boxMaterial.albedoColor = Color4.create(0, 1, 1, 1) // Cyan
-  boxMaterial.metallic = 0.6
-  boxMaterial.roughness = 0.4
-  
-  // Add pointer events for interactivity
-  PointerEvents.create(box, {
-    pointerEvents: [{
-      eventType: PointerEventType.PET_DOWN,
-      eventInfo: {}
-    }]
-  })
-  
-  return box
-}
-
-/**
- * toggleBoxColor: Toggles the box between cyan and magenta colors
- */
-function toggleBoxColor(boxToToggle: any): void {
-  const boxMaterial = Material.getPbrMaterial(boxToToggle)
-  if (isCyanColor) {
-    boxMaterial.albedoColor = Color4.create(1, 0, 1, 1) // Magenta
-  } else {
-    boxMaterial.albedoColor = Color4.create(0, 1, 1, 1) // Cyan
+function calculateCircularMotion(time: number, radius: number): { x: number; z: number } {
+  const angle = time * ANIMATION_CONFIG.baseSpeed * speedMultiplierActive
+  return {
+    x: Math.cos(angle) * radius,
+    z: Math.sin(angle) * radius,
   }
-  isCyanColor = !isCyanColor
 }
 
 /**
- * createDecorativeSphere: Creates a warm-colored sphere with animation
- * Positioned at corner and floats smoothly
+ * calculateHeightVariation: Computes vertical oscillation using sine wave
+ * Creates smooth up-down floating motion
+ * @param time - Current animation time
+ * @param baseHeight - Center point for oscillation
+ * @param amplitude - Maximum deviation from center
+ * @returns Height value in Y axis
  */
-function createDecorativeSphere(): void {
-  const sphere = engine.addEntity()
-  Transform.create(sphere, {
-    position: Vector3.create(11, 2, 8),
-    scale: Vector3.create(1.5, 1.5, 1.5)
-  })
-  MeshRenderer.setSphere(sphere)
-  const sphereMaterial = Material.getPbrMaterial(sphere)
-  sphereMaterial.albedoColor = Color4.create(1, 0.7, 0.5, 1) // Warm orange
-  sphereMaterial.metallic = 0.3
-  sphereMaterial.roughness = 0.5
-  sphereMaterial.emissiveColor = Color4.create(1, 0.5, 0.2, 1)
-  sphereMaterial.emissiveIntensity = 0.2
+function calculateHeightVariation(time: number, baseHeight: number, amplitude: number): number {
+  const frequency = ANIMATION_CONFIG.baseSpeed * speedMultiplierActive * 0.5
+  return baseHeight + Math.sin(time * frequency) * amplitude
 }
 
 /**
- * createFloatingBlueSphere: Creates a blue sphere floating in a corner
- * NEW: Additional entity for visual interest
+ * updateSpeedMultiplier: Manages acceleration decay over time
+ * Gradually returns speed to normal after red box click
  */
-function createFloatingBlueSphere(): void {
-  const blueSphere = engine.addEntity()
-  Transform.create(blueSphere, {
-    position: Vector3.create(3, 3, 13), // Corner position with height
-    scale: Vector3.create(1.2, 1.2, 1.2)
-  })
-  MeshRenderer.setSphere(blueSphere)
-  const blueMaterial = Material.getPbrMaterial(blueSphere)
-  blueMaterial.albedoColor = Color4.create(0.2, 0.5, 1, 1) // Blue
-  blueMaterial.metallic = 0.4
-  blueMaterial.roughness = 0.4
-  blueMaterial.emissiveColor = Color4.create(0.3, 0.6, 1, 1)
-  blueMaterial.emissiveIntensity = 0.3
+function updateSpeedMultiplier(): void {
+  if (speedMultiplierActive > 1.0) {
+    speedDecayCounter++
+    if (speedDecayCounter >= ANIMATION_CONFIG.speedDecayFrames) {
+      speedMultiplierActive = 1.0
+      speedDecayCounter = 0
+    }
+  }
 }
 
 /**
- * createRedBox: Creates a small red box at the other end of the floor
- * NEW: Additional entity for balanced composition
+ * animateBlueSphere: Updates blue sphere position with circular + vertical motion
+ * Combines XZ circular motion with Y sine wave for complex 3D animation
+ */
+function animateBlueSphere(): void {
+  if (!blueSphereEntity) return
+
+  const circularPos = calculateCircularMotion(animationTime, ANIMATION_CONFIG.sphereRadius)
+  const height = calculateHeightVariation(
+    animationTime,
+    ANIMATION_CONFIG.sphereBaseHeight,
+    ANIMATION_CONFIG.heightAmplitude
+  )
+
+  const transform = Transform.getMutable(blueSphereEntity)
+  transform.position = Vector3.create(circularPos.x, height, circularPos.z)
+
+  // Add subtle rotation for visual interest
+  const rotationSpeed = 0.05 * speedMultiplierActive
+  const currentRotation = transform.rotation
+  transform.rotation = Quaternion.fromEulerDegrees(
+    0,
+    rotationSpeed * animationTime,
+    Math.sin(animationTime * 0.01) * 10
+  )
+}
+
+/**
+ * handleRedBoxClick: Triggered when user clicks red box
+ * Accelerates blue sphere animation temporarily
+ */
+function handleRedBoxClick(): void {
+  console.log('Red box clicked - Accelerating blue sphere!')
+  speedMultiplierActive = ANIMATION_CONFIG.speedMultiplier
+  speedDecayCounter = 0
+}
+
+// ============================================
+// Entity Creation Functions (Modular)
+// ============================================
+
+/**
+ * createBlueSphere: Creates animated blue sphere
+ */
+function createBlueSphere(): void {
+  blueSphereEntity = engine.addEntity()
+
+  MeshRenderer.setBox(blueSphereEntity)
+  Material.setPbrMaterial(blueSphereEntity, {
+    albedoColor: Color4.create(0, 0.5, 1, 1), // Blue
+  })
+
+  Transform.create(blueSphereEntity, {
+    position: Vector3.create(ANIMATION_CONFIG.sphereRadius, ANIMATION_CONFIG.sphereBaseHeight, 0),
+    scale: Vector3.create(0.8, 0.8, 0.8),
+  })
+}
+
+/**
+ * createRedBox: Creates interactive red box
  */
 function createRedBox(): void {
-  const redBox = engine.addEntity()
-  Transform.create(redBox, {
-    position: Vector3.create(13, 0.5, 3), // Opposite corner at floor level
-    scale: Vector3.create(1, 1, 1) // Small size
-  })
-  MeshRenderer.setBox(redBox)
-  const redMaterial = Material.getPbrMaterial(redBox)
-  redMaterial.albedoColor = Color4.create(1, 0.2, 0.2, 1) // Red
-  redMaterial.metallic = 0.3
-  redMaterial.roughness = 0.6
-  redMaterial.emissiveColor = Color4.create(1, 0, 0, 1)
-  redMaterial.emissiveIntensity = 0.2
-}
+  redBoxEntity = engine.addEntity()
 
-/**
- * createWall: Creates a decorative wall behind the box
- * MODIFIED: Now rotates continuously on Y axis
- */
-function createWall(): any {
-  const wall = engine.addEntity()
-  Transform.create(wall, {
-    position: Vector3.create(8, 1, 4),
-    scale: Vector3.create(10, 2, 0.5),
-    rotation: Quaternion.identity()
+  MeshRenderer.setBox(redBoxEntity)
+  Material.setPbrMaterial(redBoxEntity, {
+    albedoColor: Color4.create(1, 0, 0, 1), // Red
   })
-  MeshRenderer.setBox(wall)
-  const wallMaterial = Material.getPbrMaterial(wall)
-  wallMaterial.albedoColor = Color4.create(0.9, 0.9, 0.9, 1) // Light grey
-  wallMaterial.metallic = 0.2
-  wallMaterial.roughness = 0.7
-  
-  return wall
-}
 
-/**
- * createWelcomeText: Creates a welcome message box
- * MODIFIED: Now has pulse/heartbeat scale effect
- */
-function createWelcomeText(): any {
-  const welcomeText = engine.addEntity()
-  Transform.create(welcomeText, {
-    position: Vector3.create(8, 3.5, 8),
-    scale: Vector3.create(2, 1, 0.5)
+  Transform.create(redBoxEntity, {
+    position: Vector3.create(0, 1, 0),
+    scale: Vector3.create(2, 2, 2),
   })
-  
-  // Configure Mesh Renderer: Create as box placeholder (text not directly available)
-  // In a real scenario with TextShape component, this would display the text
-  MeshRenderer.setBox(welcomeText)
-  
-  // Configure Material: Light color for text visibility
-  const textMaterial = Material.getPbrMaterial(welcomeText)
-  textMaterial.albedoColor = Color4.create(1, 1, 0.8, 1) // Light yellow/cream
-  textMaterial.emissiveColor = Color4.create(0.8, 0.8, 0.6, 1) // Subtle emissive glow
-  textMaterial.emissiveIntensity = 0.3
-  
-  return welcomeText
-}
 
-/**
- * applyWallRotation: Applies continuous rotation to the wall around Y axis
- * Called from animation system each frame
- */
-function applyWallRotation(wall: any, deltaTime: number): void {
-  if (!wall) return
-  
-  const currentTransform = Transform.get(wall)
-  // Slow continuous rotation: 30 degrees per second around Y axis
-  const rotationSpeed = 30 * (Math.PI / 180) // Convert to radians
-  
-  // Create rotation quaternion around Y axis
-  const angle = (animationTime * rotationSpeed) * 0.5 // Gentle speed
-  const rotationQuat = Quaternion.fromAxisAngle(
-    Vector3.create(0, 1, 0), // Y axis
-    angle
-  )
-  
-  Transform.mutate(wall, {
-    rotation: rotationQuat
+  // Add click interaction
+  PointerEvents.createOrReplace(redBoxEntity, {
+    pointerEvents: [
+      {
+        eventType: PointerEventType.PET_DOWN,
+        eventInfo: {
+          button: 'PRIMARY',
+          hoverText: 'Click to accelerate sphere',
+        },
+      },
+    ],
   })
 }
 
 /**
- * applyWelcomeTextPulse: Applies heartbeat pulse to welcome text scale
- * Called from animation system each frame
+ * createWall: Creates background wall
  */
-function applyWelcomeTextPulse(welcomeText: any, deltaTime: number): void {
-  if (!welcomeText) return
-  
-  const currentTransform = Transform.get(welcomeText)
-  // Pulse effect using sine wave for smooth heartbeat
-  // Oscillates between 0.8 and 1.2 of original scale
-  const pulseAmount = Math.sin(animationTime * 3) * 0.2 + 1.0 // Range: 0.8 - 1.2
-  const baseScale = Vector3.create(2, 1, 0.5)
-  
-  const pulsingScale = Vector3.create(
-    baseScale.x * pulseAmount,
-    baseScale.y * pulseAmount,
-    baseScale.z * pulseAmount
-  )
-  
-  Transform.mutate(welcomeText, {
-    scale: pulsingScale
+function createWall(): void {
+  wallEntity = engine.addEntity()
+
+  MeshRenderer.setBox(wallEntity)
+  Material.setPbrMaterial(wallEntity, {
+    albedoColor: Color4.create(0.5, 0.5, 0.5, 1),
+  })
+
+  Transform.create(wallEntity, {
+    position: Vector3.create(0, 2, -5),
+    scale: Vector3.create(10, 4, 0.2),
   })
 }
 
+// ============================================
+// Scene Setup
+// ============================================
+
 /**
- * setupAnimationSystem: Sets up the animation loop for all animated entities
- * Handles: wall rotation, welcome text pulse, floating sphere, and click interactions
+ * setupScene: Initializes all scene entities
+ * Creates modular structure for easy maintenance
  */
-function setupAnimationSystem(): void {
-  // Use a frame update system for continuous animation
-  engine.addSystem((dt: number) => {
-    animationTime += dt
-    
-    // Apply wall rotation effect
-    if (wallEntity) {
-      applyWallRotation(wallEntity, dt)
-    }
-    
-    // Apply welcome text pulse effect
-    if (welcomeTextEntity) {
-      applyWelcomeTextPulse(welcomeTextEntity, dt)
-    }
-    
-    // Animate floating sphere (original sphere)
-    const sphere = engine.getEntityOrNull(2)  // Sphere entity ID (typically 2)
-    if (sphere) {
-      const currentTransform = Transform.get(sphere)
-      // Calculate vertical float using sine wave
-      const floatHeight = Math.sin(animationTime * 1.5) * 0.5  // Amplitude: 0.5, Speed: 1.5x
-      Transform.mutate(sphere, {
-        position: Vector3.create(
-          11,
-          2 + floatHeight,  // Original Y + sine wave
-          8
-        )
+function setupScene(): void {
+  console.log('Setting up enhanced animation scene...')
+  createBlueSphere()
+  createRedBox()
+  createWall()
+  console.log('Scene setup complete!')
+}
+
+// ============================================
+// Main Update Loop
+// ============================================
+
+/**
+ * Main animation loop - called every frame
+ * Updates animation states and entity positions
+ */
+engine.addSystem(() => {
+  animationTime += 1
+  updateSpeedMultiplier()
+  animateBlueSphere()
+})
+
+// ============================================
+// Input Handling
+// ============================================
+
+/**
+ * Pointer event handler for interactive elements
+ */
+engine.addSystem((dt: number) => {
+  if (!redBoxEntity) return
+
+  // Check for pointer down events
+  const pointerEvents = PointerEvents.get(redBoxEntity)
+  if (pointerEvents && pointerEvents.pointerEvents && pointerEvents.pointerEvents.length > 0) {
+    // Handle click interaction
+    engine.addSystem(() => {
+      PointerEvents.createOrReplace(redBoxEntity, {
+        pointerEvents: [
+          {
+            eventType: PointerEventType.PET_DOWN,
+            eventInfo: {
+              button: 'PRIMARY',
+              hoverText: 'Click to accelerate sphere',
+              callback: handleRedBoxClick,
+            },
+          },
+        ],
       })
-    }
-    
-    // Handle box click interactions
-    if (boxEntity) {
-      const events = PointerEvents.get(boxEntity)?.pointerEvents || []
-      for (const event of events) {
-        if (event.eventType === PointerEventType.PET_DOWN) {
-          toggleBoxColor(boxEntity)
-        }
-      }
-    }
-  })
-}
+    }, 0.016)
+  }
+})
 
-// ============================================
-// Main Execution
-// ============================================
-/**
- * main: Entry point for the scene initialization
- * Exports the main function to be called by the SDK
- */
-export function main(): void {
-  setupScene()
-}
+// Initialize the scene when the script loads
+setupScene()
+
+console.log('Advanced animation system loaded!')
+console.log('Features: Circular motion, sine-wave height variation, interactive acceleration')
