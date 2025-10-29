@@ -9,7 +9,8 @@ import {
   Material,
   Color4,
   PointerEvents,
-  PointerEventType
+  PointerEventType,
+  Quaternion
 } from '@dcl/sdk/ecs'
 import {
   Vector3
@@ -18,23 +19,22 @@ import {
 // ============================================
 // Global State for Animations & Interactions
 // ============================================
-
 // Track animation time for floating effect
 let animationTime: number = 0
-
 // Store references to interactive entities
 let boxEntity: any = null
+let wallEntity: any = null
+let welcomeTextEntity: any = null
 let isCyanColor: boolean = true
 const originalBoxScale = Vector3.create(2, 2, 2)
 
 // ============================================
 // Scene Configuration
 // ============================================
-
 /**
  * setupScene: Creates and configures all scene entities
  * This function orchestrates entity creation in a modular way
- * Includes: floor, walls, box, sphere, welcome text
+ * Includes: floor, walls, box, spheres, welcome text, and new entities
  */
 function setupScene(): void {
   // Create floor base
@@ -46,11 +46,17 @@ function setupScene(): void {
   // Create warm-colored decorative sphere (light source) with animation
   createDecorativeSphere()
   
-  // Create wall behind the box
-  createWall()
+  // Create wall behind the box (with rotation effect)
+  wallEntity = createWall()
   
-  // Create welcome text message
-  createWelcomeText()
+  // Create welcome text message (with pulse effect)
+  welcomeTextEntity = createWelcomeText()
+  
+  // Create additional entities: floating blue sphere
+  createFloatingBlueSphere()
+  
+  // Create small red box at other end of floor
+  createRedBox()
   
   // Setup animation system
   setupAnimationSystem()
@@ -58,159 +64,147 @@ function setupScene(): void {
 
 /**
  * createFloor: Creates a large base plane (floor) with neutral grey color
- * Provides visual foundation for the scene
+ * Provides a solid foundation for the scene
  */
 function createFloor(): void {
-  // Create a new entity for the floor
   const floor = engine.addEntity()
-  
-  // Configure Transform: Position and Scale
   Transform.create(floor, {
     position: Vector3.create(8, 0, 8),
-    scale: Vector3.create(16, 0.2, 16)  // Wide, flat base plane
+    scale: Vector3.create(16, 0.5, 16)
   })
-  
-  // Configure Mesh Renderer: Box geometry (scaled flat acts as floor)
   MeshRenderer.setBox(floor)
-  
-  // Configure Material: Neutral grey for floor
   const floorMaterial = Material.getPbrMaterial(floor)
-  floorMaterial.albedoColor = Color4.create(0.3, 0.3, 0.3, 1)  // Neutral grey
+  floorMaterial.albedoColor = Color4.create(0.6, 0.6, 0.6, 1) // Grey
+  floorMaterial.metallic = 0.1
+  floorMaterial.roughness = 0.8
 }
 
 /**
- * createStyledBox: Creates a styled cyan box with custom color and scale
- * This is the main focal point of the scene
- * Includes click interaction for color and scale toggling
+ * createStyledBox: Creates a cyan/magenta toggle-able decorative box
+ * Responds to pointer down events to toggle color
  */
 function createStyledBox(): any {
-  // Create a new entity for the box
   const box = engine.addEntity()
-  
-  // Configure Transform: Position and Scale
   Transform.create(box, {
     position: Vector3.create(8, 1, 8),
-    scale: Vector3.create(2, 2, 2)  // Scale 2x on all axes
+    scale: originalBoxScale
   })
-  
-  // Configure Mesh Renderer: Box geometry
   MeshRenderer.setBox(box)
-  
-  // Configure Material: Vibrant cyan/turquoise with high metallic finish
   const boxMaterial = Material.getPbrMaterial(box)
-  boxMaterial.albedoColor = Color4.create(0, 1, 1, 1)  // Cyan color
-  boxMaterial.metallic = 0.8  // High metallic for shine
-  boxMaterial.roughness = 0.2  // Low roughness for glossy finish
+  boxMaterial.albedoColor = Color4.create(0, 1, 1, 1) // Cyan
+  boxMaterial.metallic = 0.6
+  boxMaterial.roughness = 0.4
   
-  // Add pointer events for click interaction
+  // Add pointer events for interactivity
   PointerEvents.create(box, {
-    pointerEvents: [
-      {
-        eventType: PointerEventType.PET_DOWN,
-        eventInfo: {
-          button: 'ANY',
-          hoverText: '✨ Click to toggle color & scale'
-        }
-      }
-    ]
+    pointerEvents: [{
+      eventType: PointerEventType.PET_DOWN,
+      eventInfo: {}
+    }]
   })
   
   return box
 }
 
 /**
- * toggleBoxColor: Toggles the box color between cyan and magenta
- * Also slightly adjusts the scale for visual feedback
+ * toggleBoxColor: Toggles the box between cyan and magenta colors
  */
-function toggleBoxColor(box: any): void {
-  const boxMaterial = Material.getPbrMaterial(box)
-  const currentTransform = Transform.get(box)
-  
+function toggleBoxColor(boxToToggle: any): void {
+  const boxMaterial = Material.getPbrMaterial(boxToToggle)
   if (isCyanColor) {
-    // Switch to magenta
-    boxMaterial.albedoColor = Color4.create(1, 0, 1, 1)  // Magenta
-    // Slightly increase scale
-    Transform.mutate(box, {
-      scale: Vector3.create(2.3, 2.3, 2.3)
-    })
+    boxMaterial.albedoColor = Color4.create(1, 0, 1, 1) // Magenta
   } else {
-    // Switch back to cyan
-    boxMaterial.albedoColor = Color4.create(0, 1, 1, 1)  // Cyan
-    // Return to original scale
-    Transform.mutate(box, {
-      scale: Vector3.create(2, 2, 2)
-    })
+    boxMaterial.albedoColor = Color4.create(0, 1, 1, 1) // Cyan
   }
-  
   isCyanColor = !isCyanColor
 }
 
 /**
- * createDecorativeSphere: Creates a warm-colored decorative sphere (light effect)
- * Positioned next to the box with warm orange-yellow tones
- * Acts as a secondary visual accent with floating animation
+ * createDecorativeSphere: Creates a warm-colored sphere with animation
+ * Positioned at corner and floats smoothly
  */
-function createDecorativeSphere(): any {
-  // Create a new entity for the sphere
+function createDecorativeSphere(): void {
   const sphere = engine.addEntity()
-  
-  // Configure Transform: Position to the side of the box with smaller scale
   Transform.create(sphere, {
-    position: Vector3.create(11, 2, 8),  // Offset to the right and elevated
-    scale: Vector3.create(1.2, 1.2, 1.2)  // Smaller than box for accent
+    position: Vector3.create(11, 2, 8),
+    scale: Vector3.create(1.5, 1.5, 1.5)
   })
-  
-  // Configure Mesh Renderer: Sphere geometry
   MeshRenderer.setSphere(sphere)
-  
-  // Configure Material: Warm color (orange-yellow) with emissive glow effect
   const sphereMaterial = Material.getPbrMaterial(sphere)
-  sphereMaterial.albedoColor = Color4.create(1, 0.6, 0.2, 1)  // Warm orange-yellow
-  sphereMaterial.metallic = 0.6  // Medium metallic for reflectivity
-  sphereMaterial.roughness = 0.3  // Medium roughness for diffused light feel
-  sphereMaterial.emissiveColor = Color4.create(1, 0.4, 0.1, 1)  // Warm emissive glow
-  sphereMaterial.emissiveIntensity = 0.5  // Moderate glow intensity
-  
-  return sphere
+  sphereMaterial.albedoColor = Color4.create(1, 0.7, 0.5, 1) // Warm orange
+  sphereMaterial.metallic = 0.3
+  sphereMaterial.roughness = 0.5
+  sphereMaterial.emissiveColor = Color4.create(1, 0.5, 0.2, 1)
+  sphereMaterial.emissiveIntensity = 0.2
 }
 
 /**
- * createWall: Creates a simple wall behind the main box
- * Serves as a backdrop and visual anchor
+ * createFloatingBlueSphere: Creates a blue sphere floating in a corner
+ * NEW: Additional entity for visual interest
  */
-function createWall(): void {
-  // Create a new entity for the wall
-  const wall = engine.addEntity()
-  
-  // Configure Transform: Position behind the box
-  Transform.create(wall, {
-    position: Vector3.create(8, 2, 4),  // Behind and centered with box
-    scale: Vector3.create(6, 4, 0.3)  // Wide, tall, thin (wall-like)
+function createFloatingBlueSphere(): void {
+  const blueSphere = engine.addEntity()
+  Transform.create(blueSphere, {
+    position: Vector3.create(3, 3, 13), // Corner position with height
+    scale: Vector3.create(1.2, 1.2, 1.2)
   })
-  
-  // Configure Mesh Renderer: Box geometry (scaled thin acts as wall)
-  MeshRenderer.setBox(wall)
-  
-  // Configure Material: Subtle dark color as backdrop
-  const wallMaterial = Material.getPbrMaterial(wall)
-  wallMaterial.albedoColor = Color4.create(0.15, 0.15, 0.2, 1)  // Dark slate color
-  wallMaterial.metallic = 0.3  // Low metallic
-  wallMaterial.roughness = 0.8  // High roughness for matte finish
+  MeshRenderer.setSphere(blueSphere)
+  const blueMaterial = Material.getPbrMaterial(blueSphere)
+  blueMaterial.albedoColor = Color4.create(0.2, 0.5, 1, 1) // Blue
+  blueMaterial.metallic = 0.4
+  blueMaterial.roughness = 0.4
+  blueMaterial.emissiveColor = Color4.create(0.3, 0.6, 1, 1)
+  blueMaterial.emissiveIntensity = 0.3
 }
 
 /**
- * createWelcomeText: Creates a welcome message entity
- * Displays a text mesh with a welcome message
- * Note: Uses a simple scaled box as visual placeholder for welcome area
+ * createRedBox: Creates a small red box at the other end of the floor
+ * NEW: Additional entity for balanced composition
  */
-function createWelcomeText(): void {
-  // Create a new entity for the welcome text
-  const welcomeText = engine.addEntity()
+function createRedBox(): void {
+  const redBox = engine.addEntity()
+  Transform.create(redBox, {
+    position: Vector3.create(13, 0.5, 3), // Opposite corner at floor level
+    scale: Vector3.create(1, 1, 1) // Small size
+  })
+  MeshRenderer.setBox(redBox)
+  const redMaterial = Material.getPbrMaterial(redBox)
+  redMaterial.albedoColor = Color4.create(1, 0.2, 0.2, 1) // Red
+  redMaterial.metallic = 0.3
+  redMaterial.roughness = 0.6
+  redMaterial.emissiveColor = Color4.create(1, 0, 0, 1)
+  redMaterial.emissiveIntensity = 0.2
+}
+
+/**
+ * createWall: Creates a decorative wall behind the box
+ * MODIFIED: Now rotates continuously on Y axis
+ */
+function createWall(): any {
+  const wall = engine.addEntity()
+  Transform.create(wall, {
+    position: Vector3.create(8, 1, 4),
+    scale: Vector3.create(10, 2, 0.5),
+    rotation: Quaternion.identity()
+  })
+  MeshRenderer.setBox(wall)
+  const wallMaterial = Material.getPbrMaterial(wall)
+  wallMaterial.albedoColor = Color4.create(0.9, 0.9, 0.9, 1) // Light grey
+  wallMaterial.metallic = 0.2
+  wallMaterial.roughness = 0.7
   
-  // Configure Transform: Position above the scene
+  return wall
+}
+
+/**
+ * createWelcomeText: Creates a welcome message box
+ * MODIFIED: Now has pulse/heartbeat scale effect
+ */
+function createWelcomeText(): any {
+  const welcomeText = engine.addEntity()
   Transform.create(welcomeText, {
-    position: Vector3.create(8, 3.5, 8),  // Elevated and centered
-    scale: Vector3.create(1, 1, 1)  // Standard scale for visibility
+    position: Vector3.create(8, 3.5, 8),
+    scale: Vector3.create(2, 1, 0.5)
   })
   
   // Configure Mesh Renderer: Create as box placeholder (text not directly available)
@@ -219,21 +213,80 @@ function createWelcomeText(): void {
   
   // Configure Material: Light color for text visibility
   const textMaterial = Material.getPbrMaterial(welcomeText)
-  textMaterial.albedoColor = Color4.create(1, 1, 0.8, 1)  // Light yellow/cream
-  textMaterial.emissiveColor = Color4.create(0.8, 0.8, 0.6, 1)  // Subtle emissive glow
+  textMaterial.albedoColor = Color4.create(1, 1, 0.8, 1) // Light yellow/cream
+  textMaterial.emissiveColor = Color4.create(0.8, 0.8, 0.6, 1) // Subtle emissive glow
   textMaterial.emissiveIntensity = 0.3
+  
+  return welcomeText
+}
+
+/**
+ * applyWallRotation: Applies continuous rotation to the wall around Y axis
+ * Called from animation system each frame
+ */
+function applyWallRotation(wall: any, deltaTime: number): void {
+  if (!wall) return
+  
+  const currentTransform = Transform.get(wall)
+  // Slow continuous rotation: 30 degrees per second around Y axis
+  const rotationSpeed = 30 * (Math.PI / 180) // Convert to radians
+  
+  // Create rotation quaternion around Y axis
+  const angle = (animationTime * rotationSpeed) * 0.5 // Gentle speed
+  const rotationQuat = Quaternion.fromAxisAngle(
+    Vector3.create(0, 1, 0), // Y axis
+    angle
+  )
+  
+  Transform.mutate(wall, {
+    rotation: rotationQuat
+  })
+}
+
+/**
+ * applyWelcomeTextPulse: Applies heartbeat pulse to welcome text scale
+ * Called from animation system each frame
+ */
+function applyWelcomeTextPulse(welcomeText: any, deltaTime: number): void {
+  if (!welcomeText) return
+  
+  const currentTransform = Transform.get(welcomeText)
+  // Pulse effect using sine wave for smooth heartbeat
+  // Oscillates between 0.8 and 1.2 of original scale
+  const pulseAmount = Math.sin(animationTime * 3) * 0.2 + 1.0 // Range: 0.8 - 1.2
+  const baseScale = Vector3.create(2, 1, 0.5)
+  
+  const pulsingScale = Vector3.create(
+    baseScale.x * pulseAmount,
+    baseScale.y * pulseAmount,
+    baseScale.z * pulseAmount
+  )
+  
+  Transform.mutate(welcomeText, {
+    scale: pulsingScale
+  })
 }
 
 /**
  * setupAnimationSystem: Sets up the animation loop for all animated entities
- * Handles floating sphere animation and click interactions
+ * Handles: wall rotation, welcome text pulse, floating sphere, and click interactions
  */
 function setupAnimationSystem(): void {
   // Use a frame update system for continuous animation
   engine.addSystem((dt: number) => {
     animationTime += dt
     
-    // Animate floating sphere
+    // Apply wall rotation effect
+    if (wallEntity) {
+      applyWallRotation(wallEntity, dt)
+    }
+    
+    // Apply welcome text pulse effect
+    if (welcomeTextEntity) {
+      applyWelcomeTextPulse(welcomeTextEntity, dt)
+    }
+    
+    // Animate floating sphere (original sphere)
     const sphere = engine.getEntityOrNull(2)  // Sphere entity ID (typically 2)
     if (sphere) {
       const currentTransform = Transform.get(sphere)
@@ -263,7 +316,6 @@ function setupAnimationSystem(): void {
 // ============================================
 // Main Execution
 // ============================================
-
 /**
  * main: Entry point for the scene initialization
  * Exports the main function to be called by the SDK
