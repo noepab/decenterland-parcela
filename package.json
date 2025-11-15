@@ -8,10 +8,17 @@
     "build": "build-ecs",
     "watch": "chokidar \"src/**/*.ts\" -c \"npm run build\"",
     "deploy": "dcl deploy",
-    "ecs-install": "npm install --save-dev @dcl/inspector"
+    "ecs-install": "npm install --save-dev @dcl/inspector",
+    "clean": "rm -rf bin node_modules package-lock.json",
+    "reinstall": "npm run clean && npm install",
+    "lint": "echo 'Checking TypeScript files...' && tsc --noEmit",
+    "format": "echo 'Code formatting not configured yet'",
+    "dev": "npm run build && npm run start",
+    "status": "npm run build && node -e \"console.log('✅ Build successful! Ready to start with: npm run start')\"",
+    "help": "node -e \"console.log('Available commands:\\n- npm start: Start development server\\n- npm run build: Build project\\n- npm run watch: Watch for changes\\n- npm run clean: Clean build artifacts\\n- npm run lint: Check TypeScript\\n- npm run dev: Build and start\\n- npm run status: Check project status')\""
   },
   "devDependencies": {
-    "@dcl/inspector": "^2.0.0",
+    "@dcl/inspector": "^7.15.4",
     "@dcl/js-runtime": "^7.4.4",
     "@dcl/sdk": "^7.4.4",
     "chokidar-cli": "^3.0.0"
